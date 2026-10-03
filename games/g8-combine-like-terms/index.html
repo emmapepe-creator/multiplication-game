@@ -17,7 +17,7 @@
 <section class="card" aria-label="過關進度"><strong id="progress"></strong><p class="muted">每題第一次作答計入成績；做滿 6 題後，最近 6 題至少答對 5 題就過關。</p><div id="dots" class="dots" aria-label="最近六題紀錄"></div></section>
 <section class="card"><h2 id="heading"></h2><p id="instruction"></p><div id="question" class="equation"></div>
 <section class="visual" aria-label="方塊視覺提示"><h3>看方塊，想合併</h3><div id="tilelegend" class="tilelegend">大正方形 x²：二次項｜長方形 x：一次項｜小正方形 1：常數項。<br>實線「＋」表示正，虛線「−」表示負。只合併同一種方塊。</div><div id="tilegroups" class="tilegroups"></div><button id="groupTiles" type="button" aria-pressed="false">提示：同類放一起</button><p id="tilehint" class="tilehint" role="status" aria-live="polite">每一項的方塊先分開呈現。可以先自己想，再按提示。</p></section>
-<form id="form" novalidate><h2>看方塊，分別相加</h2><div id="fields" class="fields"></div><p class="muted">只填整數係數，例如 −3；合併後沒有這一類項時填 0。</p><div class="actions"><button class="primary" id="check" type="submit">確認答案</button><button id="next" type="button" hidden>下一題</button></div></form>
+<form id="form" novalidate><h2 id="answerHeading">看方塊，分別相加</h2><div id="fields" class="fields"></div><p class="muted">只填整數係數，例如 −3；合併後沒有這一類項時填 0。</p><div class="actions"><button class="primary" id="check" type="submit">確認答案</button><button id="next" type="button" hidden>下一題</button></div></form>
 <div id="feedback" role="status" aria-live="polite" hidden></div><div class="actions" id="passActions" hidden><button class="primary" id="advance">前往第二關</button></div>
 </section>
 <details class="card"><summary>看練習方法</summary><p>第一關交錯練習常數項、一次項、二次項，每題只合併一類。例如：3x ＋ (−5x) ＝ (3 ＋ (−5))x ＝ −2x。</p><p>第二關：2x² ＋ (−3x) ＋ (−5x²) ＋ 4x。先把 x² 與 x 分成兩組，再算 2 ＋ (−5) ＝ −3、−3 ＋ 4 ＝ 1，得到 −3x² ＋ x。</p><p>也會出現二次項與常數項、一次項與常數項。例如：2x² ＋ (−3) ＋ (−5x²) ＋ 4，合併後是 −3x² ＋ 1。常數項沒有 x，常數只和常數相加。</p><p>第三關：3x² − 5x²。只有 3 個正方塊，補入 2 組零配對，再移除 5 個正方塊，剩下 2 個負方塊，得到 −2x²。負數減正數，例如 −3x − 2x ＝ −5x，越欠越多。</p><p>係數 1 可省略；係數 −1 寫成負號；係數 0 的項可省略。</p></details>
@@ -35,11 +35,21 @@ if(ONLINE){
  else{$('studentPanel').hidden=false;$('studentIdentity').textContent=student.className+'班｜'+student.seatNo+'號｜'+student.studentName;$('recordStatus').textContent='已登入，每題第一次作答會送到老師的紀錄表。'}
 }
 function persistRecords(){try{localStorage.setItem(QUEUE_KEY,JSON.stringify(pendingRecords));return true}catch(e){return false}}
+function confirmRecordSaved(recordId){
+ return new Promise((resolve,reject)=>{
+  const callback='mathRecordAck_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);const tag=document.createElement('script');let timer;
+  function finish(error){clearTimeout(timer);delete window[callback];tag.remove();if(error)reject(error);else resolve()}
+  window[callback]=data=>finish(data&&data.ok===true&&data.recordId===recordId?null:new Error('not_saved'));
+  tag.onerror=()=>finish(new Error('status_unavailable'));
+  timer=setTimeout(()=>finish(new Error('status_timeout')),12000);
+  tag.src=RECORD_ENDPOINT+'?action=status&recordId='+encodeURIComponent(recordId)+'&callback='+encodeURIComponent(callback);document.head.appendChild(tag);
+ })
+}
 async function sendPendingRecords(){
  if(sendingRecords||!ONLINE||!student)return;sendingRecords=true;
- try{while(pendingRecords.length){$('recordStatus').textContent='正在送出作答紀錄…';const record=pendingRecords[0];await fetch(RECORD_ENDPOINT,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(record)});pendingRecords.shift();persistRecords()}
- $('recordStatus').textContent='作答紀錄已送出。老師可在後台試算表查看。';$('retryRecords').hidden=true;
- }catch(e){const stored=persistRecords();$('recordStatus').textContent='有 '+pendingRecords.length+' 筆紀錄尚未送出，'+(stored?'已保留在此裝置。':'請先保持此頁開啟。')+'請連上網路後重送。';$('retryRecords').hidden=false}
+ try{while(pendingRecords.length){$('recordStatus').textContent='正在送出作答紀錄…';const record=pendingRecords[0];await fetch(RECORD_ENDPOINT,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(record)});await confirmRecordSaved(record.recordId);pendingRecords.shift();persistRecords()}
+ $('recordStatus').textContent='作答紀錄已儲存，老師可在後台試算表查看。';$('retryRecords').hidden=true;
+ }catch(e){const stored=persistRecords();$('recordStatus').textContent='有 '+pendingRecords.length+' 筆紀錄尚未確認儲存，'+(stored?'已保留在此裝置。':'請先保持此頁開啟。')+'請連上網路，待紀錄服務恢復後重送。';$('retryRecords').hidden=false}
  finally{sendingRecords=false}
 }
 function recordAnswer(ok,answers,sums){
@@ -98,10 +108,11 @@ function newQuestion(){
  if(level===2)shuffle(current.terms);
  $('heading').textContent=level===1?'第一關｜同類項係數合併':level===2?'第二關｜混合兩個項次':'第三關｜多項式減法：移除';
  $('instruction').textContent=level===1?'本題是'+names[current.kinds[0]]+'。'+(current.kinds[0]===0?'把兩個常數相加。':'把兩個同類項的係數相加。'):'本題是'+current.kinds.map(k=>names[k]).join('與')+'。看方塊，把同類項各自相加。';
+ $('answerHeading').textContent=level===3?'看方塊，分別相減':'看方塊，分別相加';
  if(level===3)$('instruction').textContent='二次項、一次項、常數項分別相減。正數減正數：夠減為正，剛好為 0，不夠為負；負數減正數：越欠越多。';
  $('question').innerHTML=current.terms.map(t=>'<span class="'+classes[t.kind]+'">'+shownTerm(t)+'</span>').join(' ＋ ');
  if(level===3){const poly=index=>current.kinds.map(k=>shownTerm({n:current.groups[k][index],kind:k})).join(' ＋ ');$('question').innerHTML='（'+poly(0)+'） − （'+poly(1)+'）'}
- $('fields').innerHTML=current.kinds.map(k=>'<label class="'+classes[k]+'">'+(k===0?'常數項的和':k===2?'x² 項係數':'x 項係數')+'<br><input id="answer'+k+'" type="text" inputmode="text" autocomplete="off" aria-label="'+names[k]+'合併後的'+(k===0?'和':'係數')+'"></label>').join('');
+ $('fields').innerHTML=current.kinds.map(k=>'<label class="'+classes[k]+'">'+(k===0?(level===3?'常數項相減結果':'常數項的和'):k===2?'x² 項係數':'x 項係數')+'<br><input id="answer'+k+'" type="text" inputmode="text" autocomplete="off" aria-label="'+names[k]+'合併後的'+(k===0?'和':'係數')+'"></label>').join('');
  $('feedback').hidden=true;$('check').disabled=false;$('next').hidden=true;$('passActions').hidden=true;renderTiles();renderProgress()
 }
 function readInteger(id){let v=$(id).value.trim().replace(/[−﹣－]/g,'-').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/＋/g,'+');return /^[+-]?\d+$/.test(v)?Number(v):null}
