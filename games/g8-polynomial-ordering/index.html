@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>國二數學－升冪與降冪排列</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6f8;color:#183345;font:22px/1.6 system-ui,"Microsoft JhengHei",sans-serif}main{max-width:850px;margin:auto;padding:24px 16px 50px}h1{font-size:1.6rem;margin:0 0 18px}h2{font-size:1.15rem;margin:0 0 14px}p{margin:10px 0}.card{background:white;border:1px solid #d2dfe6;border-radius:18px;padding:22px;margin:18px 0}.rule{border-left:5px solid #205b78;background:#eaf3f8;padding:15px}.tabs,.actions,.row{display:flex;gap:12px;flex-wrap:wrap}button{font:inherit;min-height:54px;border:2px solid #547082;border-radius:12px;background:white;color:#183345;padding:10px 18px;cursor:pointer}button:focus-visible{outline:4px solid #db8c12;outline-offset:3px}button:disabled{opacity:.45;cursor:default}.tabs button{flex:1;font-weight:700}button[aria-pressed=true],.primary{background:#205b78;color:white;border-color:#205b78}.equation{font-size:1.65rem;font-weight:700;overflow-wrap:anywhere}.term{font-size:1.45rem;font-weight:700;min-width:120px;min-height:80px}.slot{flex:1;min-width:130px;min-height:100px;border-style:dashed}.slot.filled{border-style:solid;background:#eef5fa}.small{font-size:.85rem;color:#4b6373}.feedback{padding:16px;border-radius:12px;background:#edf4f8;margin:16px 0;white-space:pre-line}.good{background:#e7f5ec;color:#185136}.bad{background:#fff0e7;color:#76351b}.history{display:flex;gap:8px}.dot{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:2px solid #6c8290;border-radius:50%;font-size:18px}.ok{background:#e7f5ec}.no{background:#fff0e7}[hidden]{display:none!important}.degree{display:block;font-size:.8rem;font-weight:400}@media(max-width:500px){body{font-size:20px}.card{padding:16px}.row{gap:8px}.term{min-width:90px;padding:10px}.slot{min-width:80px;padding:8px;font-size:1.2rem}.equation{font-size:1.3rem}}
+</style></head><body><main>
+<h1>國二數學－升冪與降冪排列</h1><section id="studentPanel" class="card" hidden><strong id="studentIdentity"></strong><p id="recordStatus" role="status" aria-live="polite">作答紀錄準備中。</p><button id="retryRecords" type="button" hidden>重送未送出的紀錄</button><p class="small"><a href="../../" target="_top">回遊戲入口／更換學生</a></p></section>
+<p>升冪、降冪混合測驗：每題先看清楚排列要求。</p>
+<p class="rule"><strong>看次方，不看係數或正負號。</strong><br>二次項的次數是 2，一次項是 1，常數項是 0。<br>升冪：次數由小到大；降冪：次數由大到小。</p>
+<section class="card"><strong id="progress"></strong><p class="small">每題第一次確認計入成績。最近 6 題答對至少 5 題就過關；升冪與降冪共用同一份成績。</p><div id="history" class="history" aria-label="最近六題紀錄"></div></section>
+<section class="card"><h2 id="prompt"></h2><p>原多項式：</p><div id="question" class="equation"></div>
+<h2 style="margin-top:24px">① 點選項目卡片</h2><p class="small">每題有二次項、一次項、常數項各一張。負號要和該項一起移動。</p><div id="pool" class="row" aria-label="可選項目"></div>
+<h2 style="margin-top:24px">② 排成你要的順序</h2><p id="direction"></p><div id="slots" class="row" aria-label="排列答案"></div><p class="small">點選已放入的卡片，可以移回上方；也可以按「重排」。</p>
+<p>你的排列：</p><div id="preview" class="equation" aria-live="polite">尚未排列</div>
+<div class="actions"><button id="check" class="primary">確認排列</button><button id="clear">重排</button><button id="hint" aria-pressed="false">提示：顯示各項次數</button><button id="next" hidden>下一題</button></div>
+<div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div></section>
+<div class="actions"><button id="reset">重新開始測驗</button></div><p class="small">無計時、無音效，可離線使用。重新開啟網頁會重新開始。</p>
+</main><script>
+'use strict';
+const $=id=>document.getElementById(id);
+const ONLINE=location.protocol==='https:'||location.protocol==='http:';
+const RECORD_ENDPOINT='https://script.google.com/macros/s/AKfycbztecQCAVcFpNu0qlJmUPHYp88FJKN4aAvfbFWXTgSCDtNpGUAPHqoYiMF1noy6sjac/exec';
+const QUEUE_KEY='orderingRecordsPendingV1';
+let student=null,pendingRecords=[],sendingRecords=false,sessionTotal=0,sessionCorrect=0;
+if(ONLINE){
+ try{student=JSON.parse(localStorage.getItem('mathGameStudentV1')||'null');pendingRecords=JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]');if(!Array.isArray(pendingRecords))pendingRecords=[]}catch(e){pendingRecords=[]}
+ if(!student||!student.className||!student.seatNo||!student.studentName){student=null;location.replace('../../')}
+ else{$('studentPanel').hidden=false;$('studentIdentity').textContent=student.className+'班｜'+student.seatNo+'號｜'+student.studentName;$('recordStatus').textContent='已登入，每題第一次作答會送到老師的紀錄表。'}
+}
+function persistRecords(){try{localStorage.setItem(QUEUE_KEY,JSON.stringify(pendingRecords));return true}catch(e){return false}}
+function confirmRecordSaved(recordId){
+ return new Promise((resolve,reject)=>{
+  const callback='mathRecordAck_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);const tag=document.createElement('script');let timer;
+  function finish(error){clearTimeout(timer);delete window[callback];tag.remove();if(error)reject(error);else resolve()}
+  window[callback]=data=>finish(data&&data.ok===true&&data.recordId===recordId?null:new Error('not_saved'));
+  tag.onerror=()=>finish(new Error('status_unavailable'));
+  timer=setTimeout(()=>finish(new Error('status_timeout')),12000);
+  tag.src=RECORD_ENDPOINT+'?action=status&recordId='+encodeURIComponent(recordId)+'&callback='+encodeURIComponent(callback);document.head.appendChild(tag);
+ })
+}
+async function sendPendingRecords(){
+ if(sendingRecords||!ONLINE||!student)return;sendingRecords=true;
+ try{while(pendingRecords.length){$('recordStatus').textContent='正在送出作答紀錄…';const record=pendingRecords[0];await fetch(RECORD_ENDPOINT,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(record)});await confirmRecordSaved(record.recordId);pendingRecords.shift();persistRecords()}
+ $('recordStatus').textContent='作答紀錄已儲存，老師可在後台試算表查看。';$('retryRecords').hidden=true;
+ }catch(e){const stored=persistRecords();$('recordStatus').textContent='有 '+pendingRecords.length+' 筆紀錄尚未確認儲存，'+(stored?'已保留在此裝置。':'請先保持此頁開啟。')+'請連上網路，待紀錄服務恢復後重送。';$('retryRecords').hidden=false}
+ finally{sendingRecords=false}
+}
+function recordAnswer(ok,chosen,correct){
+ if(!ONLINE||!student)return;sessionTotal++;if(ok)sessionCorrect++;
+ pendingRecords.push({className:student.className,seatNo:student.seatNo,studentName:student.studentName,level:document.title+'｜'+(mode==='asc'?'升冪':'降冪'),question:$('prompt').textContent+' '+$('question').textContent,studentAnswer:expression(chosen),correctAnswer:expression(correct),isCorrect:ok,total:sessionTotal,correctTotal:sessionCorrect,recentCorrect:state.history.slice(-6).filter(Boolean).length,passed:passes(state.history),recordId:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),clientTime:new Date().toISOString()});persistRecords();sendPendingRecords();
+}
+$('retryRecords').onclick=sendPendingRecords;
+window.addEventListener('online',sendPendingRecords);
+if(pendingRecords.length)sendPendingRecords();
+
+let mode='asc',terms=[],original=[],order=[],locked=false,showHint=false,lastSignature='';
+const state={history:[],passed:false};let modeBag=[];
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+const labelDegree=d=>d===2?'二次項':d===1?'一次項':'常數項';
+function termText(t,absolute=false){const n=Math.abs(t.n),suffix=t.degree===2?'x²':t.degree===1?'x':'';return (!absolute&&t.n<0?'−':'')+(n===1&&suffix?'':n)+suffix}
+function expression(list){return list.map((t,i)=>(i===0?(t.n<0?'−':''):(t.n<0?' − ':' ＋ '))+termText(t,true)).join('')}
+function requiredOrder(){return [...terms].sort((a,b)=>mode==='asc'?a.degree-b.degree:b.degree-a.degree)}
+function passes(h){return h.length>=6&&h.slice(-6).filter(Boolean).length>=5}
+function renderProgress(){const s=state,h=s.history.slice(-6);$('progress').textContent='升冪／降冪混合測驗｜'+(s.passed?'✓ 已過關！':'排列挑戰')+'　最近 '+h.length+' 題答對 '+h.filter(Boolean).length+' 題';$('history').innerHTML=Array.from({length:6},(_,i)=>'<span class="dot '+(i<h.length?(h[i]?'ok':'no'):'')+'" aria-label="'+(i<h.length?(h[i]?'答對':'答錯'):'尚未作答')+'">'+(i<h.length?(h[i]?'✓':'×'):'·')+'</span>').join('')}
+function degreeHint(t){return showHint?'<span class="degree">'+labelDegree(t.degree)+'・次數 '+t.degree+'</span>':''}
+function render(){
+ $('pool').innerHTML=original.map(t=>'<button class="term" data-pick="'+t.id+'" '+(locked||order.includes(t.id)?'disabled':'')+' aria-label="選取 '+termText(t)+'">'+termText(t)+degreeHint(t)+'</button>').join('');
+ $('slots').innerHTML=Array.from({length:3},(_,i)=>{const t=terms.find(t=>t.id===order[i]);return '<button class="slot '+(t?'filled':'')+'" data-remove="'+i+'" '+(!t||locked?'disabled':'')+' aria-label="第 '+(i+1)+' 項'+(t?'：'+termText(t)+'，點選移回':'：尚未放入')+'">'+(t?termText(t)+degreeHint(t):'第 '+(i+1)+' 項')+'</button>'}).join('');
+ $('preview').textContent=order.length?expression(order.map(id=>terms.find(t=>t.id===id))):'尚未排列';
+ $('check').disabled=locked;$('clear').disabled=locked||!order.length;$('hint').setAttribute('aria-pressed',String(showHint));$('hint').textContent=showHint?'隱藏各項次數':'提示：顯示各項次數';
+}
+function pick(id){if(locked||order.includes(id)||order.length>=3)return;order.push(id);$('feedback').hidden=true;render()}
+function remove(index){if(locked)return;order.splice(index,1);render()}
+function newQuestion(){if(!modeBag.length)modeBag=shuffle(['asc','asc','desc','desc']);mode=modeBag.pop();locked=false;order=[];showHint=false;terms=[2,1,0].map((degree,id)=>({id,degree,n:(1+Math.floor(Math.random()*9))*(Math.random()<.5?-1:1)}));
+ // 起始排列不等於要求的答案，避免直接照抄；原多項式維持相同各項。
+ let candidates=[[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
+ const answer=requiredOrder().map(t=>t.id).join(',');candidates=candidates.filter(a=>a.join(',')!==answer&&a.join(',')!==lastSignature);const ids=candidates[Math.floor(Math.random()*candidates.length)];lastSignature=ids.join(',');original=ids.map(id=>terms.find(t=>t.id===id));
+ $('question').textContent=expression(original);$('prompt').textContent='請把多項式排成「'+(mode==='asc'?'升冪':'降冪')+'」。';$('direction').textContent=mode==='asc'?'由左到右，次數從小到大。':'由左到右，次數從大到小。';$('feedback').hidden=true;$('next').hidden=true;render();renderProgress()
+}
+function check(){if(locked||ONLINE&&!student)return;if(order.length!==3){$('feedback').textContent='請先將三張卡片全部放入排列區。這次還沒有計入成績。';$('feedback').className='feedback';$('feedback').hidden=false;return}
+ const chosen=order.map(id=>terms.find(t=>t.id===id)),correct=requiredOrder(),ok=chosen.every((t,i)=>t.degree===correct[i].degree),s=state;s.history.push(ok);const newlyPassed=!s.passed&&passes(s.history);s.passed=s.passed||passes(s.history);locked=true;
+ $('feedback').textContent=(ok?'✓ 排列正確！':'再看一次：請比較各項的次數。')+'\n'+(mode==='asc'?'升冪：0 → 1 → 2。':'降冪：2 → 1 → 0。')+'\n正確排列：'+expression(correct)+'。'+(newlyPassed?'\n恭喜混合測驗過關！你可以繼續挑戰。':'');$('feedback').className='feedback '+(ok?'good':'bad');$('feedback').hidden=false;$('next').hidden=false;$('next').textContent=s.passed?'繼續練習':'下一題';render();renderProgress();recordAnswer(ok,chosen,correct)
+}
+$('pool').onclick=e=>{const b=e.target.closest('[data-pick]');if(b)pick(Number(b.dataset.pick))};$('slots').onclick=e=>{const b=e.target.closest('[data-remove]');if(b)remove(Number(b.dataset.remove))};$('check').onclick=check;$('clear').onclick=()=>{order=[];$('feedback').hidden=true;render()};$('hint').onclick=()=>{showHint=!showHint;render()};$('next').onclick=newQuestion;$('reset').onclick=()=>{state.history=[];state.passed=false;modeBag=[];newQuestion()};newQuestion();
+</script></body></html>
